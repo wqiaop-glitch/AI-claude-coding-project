@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job Agent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #222536;
+      --border: #2e3148;
+      --accent: #6c63ff;
+      --accent2: #a78bfa;
+      --text: #e2e8f0;
+      --muted: #8892a4;
+      --applied: #22c55e;
+      --tag-ba: #3b82f6;
+      --tag-pm: #f59e0b;
+      --tag-ma: #ec4899;
+      --tag-da: #10b981;
+      --radius: 8px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+    }
+
+    /* ── Header ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    .logo {
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: var(--accent2);
+      white-space: nowrap;
+    }
+
+    .header-spacer { flex: 1; }
+
+    #date-select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      cursor: pointer;
+      outline: none;
+    }
+    #date-select:focus { border-color: var(--accent); }
+
+    #applied-counter {
+      font-size: 13px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    #applied-counter span { color: var(--applied); font-weight: 600; }
+
+    /* ── Filters bar ── */
+    .filters {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .track-pill {
+      padding: 5px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .track-pill:hover { border-color: var(--accent2); color: var(--text); }
+    .track-pill.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .filter-count {
+      margin-left: auto;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* ── Status / loading ── */
+    #status {
+      padding: 48px 24px;
+      text-align: center;
+      color: var(--muted);
+    }
+    .spinner {
+      display: inline-block;
+      width: 22px;
+      height: 22px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-bottom: 10px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Table wrapper ── */
+    .table-wrap {
+      padding: 16px 24px 40px;
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 700px;
+    }
+
+    thead th {
+      background: var(--surface2);
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    thead th.sortable { cursor: pointer; user-select: none; }
+    thead th.sortable:hover { color: var(--text); }
+    thead th.sorted-asc::after  { content: ' ↑'; color: var(--accent2); }
+    thead th.sorted-desc::after { content: ' ↓'; color: var(--accent2); }
+
+    tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.12s;
+    }
+    tbody tr:hover { background: var(--surface2); }
+    tbody tr.is-applied { opacity: 0.55; }
+    tbody tr.is-applied .job-title { text-decoration: line-through; color: var(--muted); }
+
+    td {
+      padding: 12px 12px;
+      vertical-align: middle;
+    }
+
+    /* ── Applied checkbox column ── */
+    .td-check { width: 40px; text-align: center; }
+    .apply-check {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: var(--applied);
+    }
+
+    /* ── Company/Posted ── */
+    .td-company { min-width: 120px; }
+    .company-name { font-weight: 600; color: var(--text); }
+    .posted-date  { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+    /* ── Title/Location ── */
+    .td-title { min-width: 200px; }
+    .job-title { font-weight: 500; color: var(--text); line-height: 1.4; }
+    .job-location { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+    /* ── Track badge ── */
+    .td-track { width: 64px; text-align: center; }
+    .track-badge {
+      display: inline-block;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+    }
+    .track-BA { background: #1d3f6e; color: #93c5fd; }
+    .track-PM { background: #6b3f0f; color: #fcd34d; }
+    .track-MA { background: #6b1040; color: #fbcfe8; }
+    .track-DA { background: #0a4a36; color: #6ee7b7; }
+
+    /* ── Match/Summary column ── */
+    .td-info { min-width: 160px; max-width: 260px; }
+    .match-reason { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .next-action {
+      display: inline-block;
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--accent2);
+      background: rgba(108,99,255,0.12);
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    /* ── Apply button ── */
+    .td-apply { width: 110px; text-align: right; }
+    .apply-btn {
+      display: inline-block;
+      padding: 7px 14px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: var(--radius);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 600;
+      white-space: nowrap;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .apply-btn:hover  { background: #5a52e0; transform: translateY(-1px); }
+    .apply-btn:active { transform: translateY(0); }
+    .is-applied .apply-btn { background: var(--surface2); color: var(--muted); pointer-events: none; }
+
+    /* ── Empty state ── */
+    .empty-row td {
+      text-align: center;
+      padding: 48px;
+      color: var(--muted);
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      header { padding: 10px 14px; }
+      .filters, .table-wrap { padding-left: 14px; padding-right: 14px; }
+      .td-info { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">&#127279; Job Agent</div>
+  <div class="header-spacer"></div>
+  <select id="date-select" title="Switch date"></select>
+  <div id="applied-counter"><span id="applied-count">0</span>&nbsp;applied</div>
+</header>
+
+<div class="filters">
+  <button class="track-pill active" data-track="ALL">All</button>
+  <button class="track-pill" data-track="BA">BA</button>
+  <button class="track-pill" data-track="PM">PM</button>
+  <button class="track-pill" data-track="MA">MA</button>
+  <button class="track-pill" data-track="DA">DA</button>
+  <span class="filter-count" id="filter-count"></span>
+</div>
+
+<div id="status">
+  <div class="spinner"></div>
+  <div>Loading jobs…</div>
+</div>
+
+<div class="table-wrap" id="table-wrap" style="display:none">
+  <table id="jobs-table">
+    <thead>
+      <tr>
+        <th class="td-check" title="Applied">&#10003;</th>
+        <th class="td-company sortable" data-col="company">Company</th>
+        <th class="td-title sortable"   data-col="title">Title</th>
+        <th class="td-track">Track</th>
+        <th class="td-info">Match</th>
+        <th class="td-apply">Apply</th>
+      </tr>
+    </thead>
+    <tbody id="jobs-body"></tbody>
+  </table>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  CSV Parser  (handles quoted fields w/ commas)
+// ─────────────────────────────────────────────
+function parseCSV(text) {
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  if (!lines.length) return [];
+
+  const headers = splitCSVLine(lines[0]);
+
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const vals = splitCSVLine(line);
+    const obj = {};
+    headers.forEach((h, idx) => { obj[h.trim()] = (vals[idx] || '').trim(); });
+    rows.push(obj);
+  }
+  return rows;
+}
+
+function splitCSVLine(line) {
+  const result = [];
+  let inQuote = false;
+  let cur = '';
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
+      else { inQuote = !inQuote; }
+    } else if (ch === ',' && !inQuote) {
+      result.push(cur); cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  result.push(cur);
+  return result;
+}
+
+// ─────────────────────────────────────────────
+//  Date helpers
+// ─────────────────────────────────────────────
+function toDateStr(d) {
+  return d.toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+function offsetDate(d, days) {
+  const copy = new Date(d);
+  copy.setDate(copy.getDate() + days);
+  return copy;
+}
+
+function csvPath(dateStr) {
+  return `../outputs/jobs_${dateStr}.csv`;
+}
+
+async function probeDate(dateStr) {
+  try {
+    const r = await fetch(csvPath(dateStr), { method: 'HEAD' });
+    return r.ok;
+  } catch { return false; }
+}
+
+async function discoverDates() {
+  // Look back up to 14 days from today
+  const today = new Date();
+  const found = [];
+  const checks = [];
+  for (let i = 0; i <= 13; i++) {
+    const ds = toDateStr(offsetDate(today, -i));
+    checks.push({ ds, promise: probeDate(ds) });
+  }
+  for (const { ds, promise } of checks) {
+    if (await promise) found.push(ds);
+  }
+  return found; // sorted newest-first
+}
+
+// ─────────────────────────────────────────────
+//  localStorage — applied state
+// ─────────────────────────────────────────────
+const LS_KEY = 'job_agent_applied';
+
+function loadApplied() {
+  try { return new Set(JSON.parse(localStorage.getItem(LS_KEY)) || []); }
+  catch { return new Set(); }
+}
+
+function saveApplied(set) {
+  localStorage.setItem(LS_KEY, JSON.stringify([...set]));
+}
+
+let appliedSet = loadApplied();
+
+// ─────────────────────────────────────────────
+//  App state
+// ─────────────────────────────────────────────
+let allJobs       = [];   // parsed rows for current date
+let activeTrack   = 'ALL';
+let sortCol       = null;
+let sortDir       = 'asc';
+
+// ─────────────────────────────────────────────
+//  Render
+// ─────────────────────────────────────────────
+function filteredJobs() {
+  let jobs = allJobs;
+  if (activeTrack !== 'ALL') {
+    jobs = jobs.filter(j => j.Track === activeTrack);
+  }
+  if (sortCol) {
+    const key = { company: 'Company', title: 'Title', location: 'Location', posted: 'PostedDate' }[sortCol] || sortCol;
+    jobs = [...jobs].sort((a, b) => {
+      const av = (a[key] || '').toLowerCase();
+      const bv = (b[key] || '').toLowerCase();
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }
+  return jobs;
+}
+
+function formatDate(ds) {
+  if (!ds) return '';
+  const d = new Date(ds + 'T00:00:00');
+  if (isNaN(d)) return ds;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function renderTable() {
+  const jobs = filteredJobs();
+  const tbody = document.getElementById('jobs-body');
+
+  // Update filter count
+  document.getElementById('filter-count').textContent =
+    jobs.length === allJobs.length
+      ? `${allJobs.length} listings`
+      : `${jobs.length} of ${allJobs.length}`;
+
+  // Update applied counter
+  const appliedVisible = jobs.filter(j => appliedSet.has(j.ApplyURL)).length;
+  document.getElementById('applied-count').textContent =
+    `${appliedSet.size} applied`;
+
+  if (!jobs.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No listings match this filter.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = jobs.map((job, i) => {
+    const isApplied = appliedSet.has(job.ApplyURL);
+    const trackClass = `track-${job.Track || 'BA'}`;
+    const applyUrl = job.ApplyURL || '#';
+    const safeTitle = escHtml(job.Title || '');
+    const safeCompany = escHtml(job.Company || '');
+    const safeLocation = escHtml(job.Location || '');
+    const safeMatch = escHtml(job.MatchReason || '');
+    const safeNext = escHtml(job.NextAction || '');
+    const safeUrl = escAttr(applyUrl);
+
+    return `<tr class="${isApplied ? 'is-applied' : ''}" data-url="${safeUrl}">
+      <td class="td-check">
+        <input type="checkbox" class="apply-check" title="Mark as applied"
+          ${isApplied ? 'checked' : ''}
+          data-url="${safeUrl}">
+      </td>
+      <td class="td-company">
+        <div class="company-name">${safeCompany}</div>
+        <div class="posted-date">${formatDate(job.PostedDate)}</div>
+      </td>
+      <td class="td-title">
+        <div class="job-title">${safeTitle}</div>
+        <div class="job-location">${safeLocation}</div>
+      </td>
+      <td class="td-track">
+        <span class="track-badge ${trackClass}">${escHtml(job.Track || '')}</span>
+      </td>
+      <td class="td-info">
+        <div class="match-reason">${safeMatch}</div>
+        ${safeNext ? `<div class="next-action">${safeNext}</div>` : ''}
+      </td>
+      <td class="td-apply">
+        ${applyUrl !== '#'
+          ? `<a class="apply-btn" href="${safeUrl}" target="_blank" rel="noopener">Apply →</a>`
+          : '<span style="color:var(--muted);font-size:12px">—</span>'
+        }
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function escAttr(s) { return escHtml(s); }
+
+// ─────────────────────────────────────────────
+//  Sort headers
+// ─────────────────────────────────────────────
+function updateSortHeaders() {
+  document.querySelectorAll('thead th.sortable').forEach(th => {
+    th.classList.remove('sorted-asc', 'sorted-desc');
+    if (th.dataset.col === sortCol) {
+      th.classList.add(sortDir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+    }
+  });
+}
+
+document.querySelectorAll('thead th.sortable').forEach(th => {
+  th.addEventListener('click', () => {
+    const col = th.dataset.col;
+    if (sortCol === col) {
+      sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortCol = col;
+      sortDir = 'asc';
+    }
+    updateSortHeaders();
+    renderTable();
+  });
+});
+
+// ─────────────────────────────────────────────
+//  Track filter pills
+// ─────────────────────────────────────────────
+document.querySelectorAll('.track-pill').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.track-pill').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeTrack = btn.dataset.track;
+    renderTable();
+  });
+});
+
+// ─────────────────────────────────────────────
+//  Applied checkbox — event delegation
+// ─────────────────────────────────────────────
+document.getElementById('jobs-body').addEventListener('change', e => {
+  if (!e.target.classList.contains('apply-check')) return;
+  const url = e.target.dataset.url;
+  const row = e.target.closest('tr');
+  if (e.target.checked) {
+    appliedSet.add(url);
+    row.classList.add('is-applied');
+    row.querySelector('.job-title')?.classList.add('job-title');
+    const btn = row.querySelector('.apply-btn');
+    if (btn) { btn.style.background='var(--surface2)'; btn.style.color='var(--muted)'; btn.style.pointerEvents='none'; }
+  } else {
+    appliedSet.delete(url);
+    row.classList.remove('is-applied');
+    const btn = row.querySelector('.apply-btn');
+    if (btn) { btn.style.background=''; btn.style.color=''; btn.style.pointerEvents=''; }
+  }
+  saveApplied(appliedSet);
+  // update counter
+  document.getElementById('applied-count').textContent = `${appliedSet.size} applied`;
+});
+
+// ─────────────────────────────────────────────
+//  Load CSV for a specific date
+// ─────────────────────────────────────────────
+async function loadCSV(dateStr) {
+  const statusEl = document.getElementById('status');
+  const tableWrap = document.getElementById('table-wrap');
+  statusEl.innerHTML = '<div class="spinner"></div><div>Loading ' + dateStr + '…</div>';
+  statusEl.style.display = '';
+  tableWrap.style.display = 'none';
+
+  try {
+    const res = await fetch(csvPath(dateStr));
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const text = await res.text();
+    allJobs = parseCSV(text);
+    sortCol = null; sortDir = 'asc';
+    updateSortHeaders();
+    statusEl.style.display = 'none';
+    tableWrap.style.display = '';
+    renderTable();
+  } catch (err) {
+    statusEl.innerHTML = `<div style="color:#f87171">Could not load CSV for ${dateStr}.<br><small>${err.message}</small></div>`;
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Date selector
+// ─────────────────────────────────────────────
+const dateSelect = document.getElementById('date-select');
+
+dateSelect.addEventListener('change', () => {
+  loadCSV(dateSelect.value);
+});
+
+// ─────────────────────────────────────────────
+//  Bootstrap
+// ─────────────────────────────────────────────
+(async function init() {
+  const dates = await discoverDates();
+
+  if (!dates.length) {
+    document.getElementById('status').innerHTML =
+      '<div style="color:#f87171">No job CSV files found in <code>../outputs/</code>.<br>Run <code>rank_and_export.py</code> first.</div>';
+    return;
+  }
+
+  // Populate date selector
+  dates.forEach(ds => {
+    const opt = document.createElement('option');
+    opt.value = ds;
+    opt.textContent = ds;
+    dateSelect.appendChild(opt);
+  });
+  dateSelect.value = dates[0]; // newest first
+
+  await loadCSV(dates[0]);
+})();
+</script>
+</body>
+</html>
